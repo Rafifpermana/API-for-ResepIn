@@ -1,6 +1,6 @@
-from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
+import os
+from flask import Flask, request, jsonify
+from flask_cors import CORS
 from service import (
     filter_by_title_and_ingredients,
     filter_by_category_and_ingredients,
@@ -8,41 +8,25 @@ from service import (
     MAX_QUERY_LENGTH
 )
 
-app = FastAPI()
+app = Flask(__name__)
+CORS(app)
 
-# CORS middleware
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+@app.route("/recommend", methods=["POST"])
+def recommend_post():
+    body      = request.get_json() or {}
+    mode      = body.get("mode", "general")
+    top_n     = int(body.get("top_n", 5))
+    page      = int(body.get("page", 0))
 
-# Schema untuk input POST
-class RecommendRequest(BaseModel):
-    mode: str = "general"
-    top_n: int = 5
-    page: int = 0
-    query: str | None = None
-    category: str | None = None
-    ingredients: str | None = None
-
-@app.post("/recommend")
-async def recommend_post(body: RecommendRequest):
-    mode = body.mode
-    top_n = body.top_n
-    page = body.page
-
-    error = None
-    results = []
+    error         = None
+    results       = []
     total_results = 0
-    total_pages = 0
+    total_pages   = 0
 
     try:
         if mode == "category_ingredients":
-            cat = body.category
-            ings = body.ingredients
+            cat  = body.get("category")
+            ings = body.get("ingredients")
 
             if not cat or not ings:
                 error = "Kategori dan bahan wajib diisi"
@@ -52,8 +36,9 @@ async def recommend_post(body: RecommendRequest):
                 results, total_results, total_pages = filter_by_category_and_ingredients(
                     cat, ings, top_n, page
                 )
-        else:
-            query = body.query
+
+        else:  # Mode general
+            query = body.get("query")
             if not query:
                 error = "Masukkan kata kunci pencarian"
             elif len(query) > MAX_QUERY_LENGTH:
@@ -64,41 +49,20 @@ async def recommend_post(body: RecommendRequest):
                 )
 
     except Exception as e:
-        return {"error": str(e)}
+        return jsonify({"error": str(e)}), 500
 
     if error:
-        return {"error": error}
+        return jsonify({"error": error}), 400
 
-    return {
+    return jsonify({
         "recommendations": results,
         "pagination": {
-            "current_page": page,
-            "total_pages": total_pages,
+            "current_page":  page,
+            "total_pages":   total_pages,
             "total_results": total_results
         }
-    }
+    })
 
-@app.get("/recommend")
-async def recommend_get(
-    mode: str = "general",
-    top_n: int = 5,
-    page: int = 0,
-    query: str | None = None,
-    category: str | None = None,
-    ingredients: str | None = None
-):
-    # Wrap GET params into RecommendRequest and reuse POST logic
-    body = RecommendRequest(
-        mode=mode,
-        top_n=top_n,
-        page=page,
-        query=query,
-        category=category,
-        ingredients=ingredients
-    )
-    return await recommend_post(body)
-
-@app.get("/")
-async def root():
-    # Default response for health check
-    return {"status": "OK"}
+if __name__ == "__main__":
+    port = int(os.environ.get("PORT", 5000))
+    app.run(host="0.0.0.0", port=port)
