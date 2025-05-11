@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Request
+from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from service import (
@@ -77,3 +77,28 @@ async def recommend_post(body: RecommendRequest):
             "total_results": total_results
         }
     }
+
+@app.get("/recommend")
+async def recommend_get(
+    mode: str = "general",
+    top_n: int = 5,
+    page: int = 0,
+    query: str | None = None,
+    category: str | None = None,
+    ingredients: str | None = None
+):
+    # Wrap GET params into RecommendRequest and reuse POST logic
+    body = RecommendRequest(
+        mode=mode,
+        top_n=top_n,
+        page=page,
+        query=query,
+        category=category,
+        ingredients=ingredients
+    )
+    return await recommend_post(body)
+
+@app.get("/")
+async def root():
+    # Default response for health check
+    return {"status": "OK"}
