@@ -11,6 +11,10 @@ from service import (
 app = Flask(__name__)
 CORS(app)
 
+@app.route("/health")
+def health():
+    return {"status": "ok"}, 200
+
 @app.route("/recommend", methods=["POST"])
 def recommend_post():
     body      = request.get_json() or {}
@@ -64,5 +68,5 @@ def recommend_post():
     })
 
 if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 5000))
+    port = int(os.environ.get("PORT", 8080))
     app.run(host="0.0.0.0", port=port)
