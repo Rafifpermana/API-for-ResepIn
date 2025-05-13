@@ -16,59 +16,23 @@ CORS(app)
 def index():
     return "Recipe API is running. Use /recommend endpoint for recommendations."
 
-@app.route("/model-status", methods=["GET"])
-def model_status():
-    """Endpoint untuk memeriksa status model data"""
-    from loader import data, tfidf, tfidf_matrix
-    import os
-    
-    # Path file model
-    current_dir = os.path.dirname(os.path.abspath(__file__))
-    models_dir = os.path.join(current_dir, "models")
-    tfidf_path = os.path.join(models_dir, "tfidf_model.pkl")
-    matrix_path = os.path.join(models_dir, "tfidf_matrix.pkl")
-    data_path = os.path.join(models_dir, "data_resep_bersih.csv")
-    
-    # Cek status file
-    tfidf_exists = os.path.exists(tfidf_path)
-    tfidf_size = os.path.getsize(tfidf_path) if tfidf_exists else 0
-    
-    matrix_exists = os.path.exists(matrix_path)
-    matrix_size = os.path.getsize(matrix_path) if matrix_exists else 0
-    
-    data_exists = os.path.exists(data_path)
-    data_size = os.path.getsize(data_path) if data_exists else 0
-    
+@app.route("/regenerate-matrix", methods=["POST"])
+def regenerate_matrix():
+    """Endpoint untuk memaksa pembuatan ulang TF-IDF matrix"""
     try:
+        # Import loader lagi untuk memaksa eksekusi ulang
+        import importlib
+        import loader as loader_module
+        importlib.reload(loader_module)
+        
+        # Ambil status terbaru setelah reload
+        from loader import data, tfidf, tfidf_matrix
+        
         return jsonify({
-            "status": "ok",
-            "model_files": {
-                "tfidf_model": {
-                    "exists": tfidf_exists,
-                    "size_bytes": tfidf_size,
-                    "valid": tfidf_size > 0
-                },
-                "tfidf_matrix": {
-                    "exists": matrix_exists,
-                    "size_bytes": matrix_size,
-                    "valid": matrix_size > 0
-                },
-                "data_csv": {
-                    "exists": data_exists,
-                    "size_bytes": data_size,
-                    "valid": data_size > 0
-                }
-            },
-            "model_loaded": {
-                "data_loaded": len(data) > 0,
-                "recipes_count": len(data),
-                "tfidf_vocabulary_size": len(tfidf.vocabulary_) if hasattr(tfidf, 'vocabulary_') else 0,
-                "tfidf_matrix_shape": [tfidf_matrix.shape[0] if hasattr(tfidf_matrix, 'shape') else 0, 
-                                     tfidf_matrix.shape[1] if hasattr(tfidf_matrix, 'shape') else 0]
-            },
-            "environment": {
-                "model_url_configured": os.environ.get("MODEL_URL") is not None
-            }
+            "status": "success",
+            "message": "TF-IDF matrix dibuat ulang",
+            "data_count": len(data),
+            "tfidf_matrix_shape": tfidf_matrix.shape if hasattr(tfidf_matrix, 'shape') else [0, 0]
         })
     except Exception as e:
         import traceback
