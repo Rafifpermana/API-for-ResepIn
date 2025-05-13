@@ -16,6 +16,25 @@ CORS(app)
 def index():
     return "Recipe API is running. Use /recommend endpoint for recommendations."
 
+@app.route("/model-status", methods=["GET"])
+def model_status():
+    """Endpoint untuk memeriksa status model data"""
+    from loader import data, tfidf, tfidf_matrix
+    
+    try:
+        return jsonify({
+            "status": "ok",
+            "data_loaded": len(data) > 0,
+            "recipes_count": len(data),
+            "tfidf_vocabulary_size": len(tfidf.vocabulary_) if hasattr(tfidf, 'vocabulary_') else 0,
+            "tfidf_matrix_shape": tfidf_matrix.shape if hasattr(tfidf_matrix, 'shape') else [0, 0]
+        })
+    except Exception as e:
+        return jsonify({
+            "status": "error",
+            "message": str(e)
+        }), 500
+
 @app.route("/health")
 def health():
     return {"status": "ok"}, 200
