@@ -30,20 +30,26 @@ def filter_by_title_and_ingredients(query: str, top_n: int, page: int):
         if len(df) == 0:
             return [], 0, 0
 
-        # Similarity score
-        q_vec = tfidf.transform([query])
-        
-        # Jika tfidf_matrix dan q_vec tidak kompatibel, kembalikan hasil berdasarkan filter
+        # Tambahkan skor sederhana jika tidak bisa menggunakan cosine similarity
         try:
+            # Coba gunakan cosine similarity jika tfidf_matrix tersedia
+            q_vec = tfidf.transform([query])
             sim = cosine_similarity(q_vec, tfidf_matrix).flatten()
             valid_indices = [i for i in df.index if i < len(sim)]
             df = df[df.index.isin(valid_indices)].copy()
             df['score'] = sim[df.index]
-            df = df.sort_values('score', ascending=False)
         except Exception as e:
-            print(f"Error computing similarity: {e}")
-            # Fallback to unsorted results
-            df['score'] = 1.0
+            print(f"Tidak bisa hitung cosine similarity: {e}, menggunakan skor sederhana...")
+            # Fallback: Gunakan skor sederhana berdasarkan jumlah kata kunci yang cocok
+            df['score'] = 0
+            for keyword in keywords:
+                # Tambah skor untuk setiap kata kunci yang cocok di judul (bobot lebih tinggi)
+                df.loc[df['title'].str.lower().str.contains(keyword, na=False), 'score'] += 3
+                # Tambah skor untuk setiap kata kunci yang cocok di bahan
+                df.loc[df['ingredients'].str.lower().str.contains(keyword, na=False), 'score'] += 1
+                
+        # Urutkan berdasarkan skor
+        df = df.sort_values('score', ascending=False)
 
         # Hitung total & halaman
         total_results = len(df)
@@ -127,77 +133,4 @@ def filter_by_category_and_ingredients(category: str, ingredients: str, top_n: i
         
     except Exception as e:
         print(f"Error in filter_by_category_and_ingredients: {e}")
-        return [], 0, 0
-    
-def filter_by_title_and_ingredients(query: str, top_n: int, page: int):
-    """
-    Cari resep berdasarkan title & ingredients, kembalikan (results, total_results, total_pages).
-    """
-    try:
-        # Buat kata kunci
-        keywords = re.sub(r'\s+', ' ', query).strip().lower().split()
-        if not keywords:
-            return [], 0, 0
-            
-        # Tambahkan error handling jika data kosong
-        if len(data) == 0:
-            return [], 0, 0
-            
-        mask_title = data['title'].str.lower().str.contains('|'.join(keywords), regex=True, na=False)
-        mask_ing = data['ingredients'].str.lower().str.contains('|'.join(keywords), regex=True, na=False)
-        df = data[mask_title | mask_ing].copy()
-
-        # Jika tidak ada hasil yang cocok
-        if len(df) == 0:
-            return [], 0, 0
-
-        # Tambahkan skor sederhana jika tidak bisa menggunakan cosine similarity
-        try:
-            # Coba gunakan cosine similarity jika tfidf_matrix tersedia
-            q_vec = tfidf.transform([query])
-            sim = cosine_similarity(q_vec, tfidf_matrix).flatten()
-            valid_indices = [i for i in df.index if i < len(sim)]
-            df = df[df.index.isin(valid_indices)].copy()
-            df['score'] = sim[df.index]
-        except Exception as e:
-            print(f"Tidak bisa hitung cosine similarity: {e}, menggunakan skor sederhana...")
-            # Fallback: Gunakan skor sederhana berdasarkan jumlah kata kunci yang cocok
-            df['score'] = 0
-            for keyword in keywords:
-                # Tambah skor untuk setiap kata kunci yang cocok di judul (bobot lebih tinggi)
-                df.loc[df['title'].str.lower().str.contains(keyword, na=False), 'score'] += 3
-                # Tambah skor untuk setiap kata kunci yang cocok di bahan
-                df.loc[df['ingredients'].str.lower().str.contains(keyword, na=False), 'score'] += 1
-                
-        # Urutkan berdasarkan skor
-        df = df.sort_values('score', ascending=False)
-
-        # Hitung total & halaman
-        total_results = len(df)
-        total_pages = max(1, (total_results + top_n - 1) // top_n) if total_results > 0 else 0
-
-        # Pastikan page dalam range yang valid
-        valid_page = max(0, min(page, total_pages - 1)) if total_pages > 0 else 0
-
-        # Paginate
-        start_idx = valid_page * top_n
-        end_idx = start_idx + top_n
-        page_df = df.iloc[start_idx:end_idx] if start_idx < len(df) else df.iloc[0:0]
-
-        results = []
-        for _, r in page_df.iterrows():
-            try:
-                results.append({
-                    "category": r.get('kategori_bahan', ''),
-                    "title": r.get('title', ''),
-                    "ingredients": to_multiline(r.get('ingredients', '')),
-                    "steps": to_multiline(r.get('steps', '')),
-                })
-            except Exception as e:
-                print(f"Error formatting recipe result: {e}")
-
-        return results, total_results, total_pages
-        
-    except Exception as e:
-        print(f"Error in filter_by_title_and_ingredients: {e}")
         return [], 0, 0
