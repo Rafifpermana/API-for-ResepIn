@@ -1,4 +1,5 @@
 import os
+import re
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 from service import (
@@ -11,30 +12,43 @@ from service import (
 app = Flask(__name__)
 CORS(app)
 
+@app.route("/")
+def index():
+    return "Recipe API is running. Use /recommend endpoint for recommendations."
+
 @app.route("/health")
 def health():
     return {"status": "ok"}, 200
 
 @app.route("/recommend", methods=["POST"])
 def recommend_post():
-    body      = request.get_json() or {}
-    mode      = body.get("mode", "general")
-    top_n     = int(body.get("top_n", 5))
-    page      = int(body.get("page", 0))
-
-    error         = None
-    results       = []
-    total_results = 0
-    total_pages   = 0
-
     try:
+        body = request.get_json() 
+        if body is None:
+            return jsonify({"error": "Invalid JSON or missing request body"}), 400
+            
+        mode = body.get("mode", "general")
+        
+        # Handle potential non-numeric inputs with defaults
+        try:
+            top_n = int(body.get("top_n", 5))
+            page = int(body.get("page", 0))
+        except (ValueError, TypeError):
+            top_n = 5
+            page = 0
+
+        error = None
+        results = []
+        total_results = 0
+        total_pages = 0
+
         if mode == "category_ingredients":
-            cat  = body.get("category")
+            cat = body.get("category")
             ings = body.get("ingredients")
 
             if not cat or not ings:
                 error = "Kategori dan bahan wajib diisi"
-            elif len(ings.split(",")) > MAX_INGREDIENTS:
+            elif ings and len(ings.split(",")) > MAX_INGREDIENTS:
                 error = f"Maksimal {MAX_INGREDIENTS} bahan"
             else:
                 results, total_results, total_pages = filter_by_category_and_ingredients(
@@ -52,20 +66,23 @@ def recommend_post():
                     query, top_n, page
                 )
 
+        if error:
+            return jsonify({"error": error}), 400
+
+        return jsonify({
+            "recommendations": results,
+            "pagination": {
+                "current_page": page,
+                "total_pages": total_pages,
+                "total_results": total_results
+            }
+        })
+        
     except Exception as e:
-        return jsonify({"error": str(e)}), 500
-
-    if error:
-        return jsonify({"error": error}), 400
-
-    return jsonify({
-        "recommendations": results,
-        "pagination": {
-            "current_page":  page,
-            "total_pages":   total_pages,
-            "total_results": total_results
-        }
-    })
+        import traceback
+        error_details = traceback.format_exc()
+        print(f"Error in /recommend endpoint: {error_details}")
+        return jsonify({"error": f"Internal server error: {str(e)}"}), 500
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8080))
