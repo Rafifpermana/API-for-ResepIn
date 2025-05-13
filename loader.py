@@ -12,70 +12,83 @@ models_dir = os.path.join(current_dir, "models")
 if not os.path.exists(models_dir):
     os.makedirs(models_dir, exist_ok=True)
 
-# Fungsi untuk memeriksa apakah file valid
-def is_valid_file(file_path):
-    if not os.path.exists(file_path):
-        return False
-    # Cek ukuran file (jika 0 berarti kosong)
-    return os.path.getsize(file_path) > 0
-
-# Coba load model dari file lokal atau URL
-try:
-    # Path file lokal
+# Fungsi untuk memeriksa file
+def check_files():
     tfidf_path = os.path.join(models_dir, "tfidf_model.pkl")
     matrix_path = os.path.join(models_dir, "tfidf_matrix.pkl")
     data_path = os.path.join(models_dir, "data_resep_bersih.csv")
     
-    # Cek apakah file ada dan tidak kosong
-    valid_tfidf = is_valid_file(tfidf_path)
-    valid_matrix = is_valid_file(matrix_path)
-    valid_data = is_valid_file(data_path)
+    tfidf_ok = os.path.exists(tfidf_path) and os.path.getsize(tfidf_path) > 0
+    matrix_ok = os.path.exists(matrix_path) and os.path.getsize(matrix_path) > 0
+    data_ok = os.path.exists(data_path) and os.path.getsize(data_path) > 0
     
-    print(f"Status file model - TFIDF: {valid_tfidf}, Matrix: {valid_matrix}, Data: {valid_data}")
+    print(f"Status file model - TFIDF: {tfidf_ok}, Matrix: {matrix_ok}, Data: {data_ok}")
     
-    # Load model jika file valid
-    if valid_tfidf and valid_matrix and valid_data:
+    return tfidf_ok, matrix_ok, data_ok, tfidf_path, matrix_path, data_path
+
+# Coba load model
+try:
+    # Cek status file
+    tfidf_ok, matrix_ok, data_ok, tfidf_path, matrix_path, data_path = check_files()
+    
+    # Gunakan model dari file jika semua file valid
+    if tfidf_ok and matrix_ok and data_ok:
         print("Memuat model dari file lokal...")
         tfidf = joblib.load(tfidf_path)
         tfidf_matrix = joblib.load(matrix_path)
         data = pd.read_csv(data_path)
-        print(f"Berhasil memuat {len(data)} resep")
+        print(f"Berhasil memuat {len(data)} resep dari file lokal")
+    
+    # Jika tidak, coba download dari URL
     else:
-        # Coba ambil dari URL jika ada
         model_url = os.environ.get("MODEL_URL")
         if model_url:
             print(f"Mengunduh model dari {model_url}...")
-            # Contoh: MODEL_URL=https://example.com/models/
+            
+            # Unduh dan simpan
             try:
-                # Download dan load langsung dari URL
-                tfidf_url = f"{model_url}/tfidf_model.pkl"
-                matrix_url = f"{model_url}/tfidf_matrix.pkl"
-                data_url = f"{model_url}/data_resep_bersih.csv"
+                if not tfidf_ok:
+                    print(f"Mengunduh tfidf_model.pkl dari {model_url}/tfidf_model.pkl")
+                    tfidf_resp = requests.get(f"{model_url}/tfidf_model.pkl", timeout=60)
+                    if tfidf_resp.status_code == 200:
+                        with open(tfidf_path, 'wb') as f:
+                            f.write(tfidf_resp.content)
+                        print("Berhasil mengunduh tfidf_model.pkl")
                 
-                # Download tfidf model
-                tfidf_response = requests.get(tfidf_url)
-                tfidf = joblib.load(io.BytesIO(tfidf_response.content))
+                if not matrix_ok:
+                    print(f"Mengunduh tfidf_matrix.pkl dari {model_url}/tfidf_matrix.pkl")
+                    matrix_resp = requests.get(f"{model_url}/tfidf_matrix.pkl", timeout=60)
+                    if matrix_resp.status_code == 200:
+                        with open(matrix_path, 'wb') as f:
+                            f.write(matrix_resp.content)
+                        print("Berhasil mengunduh tfidf_matrix.pkl")
                 
-                # Download matrix
-                matrix_response = requests.get(matrix_url)
-                tfidf_matrix = joblib.load(io.BytesIO(matrix_response.content))
+                if not data_ok:
+                    print(f"Mengunduh data_resep_bersih.csv dari {model_url}/data_resep_bersih.csv")
+                    data_resp = requests.get(f"{model_url}/data_resep_bersih.csv", timeout=60)
+                    if data_resp.status_code == 200:
+                        with open(data_path, 'wb') as f:
+                            f.write(data_resp.content)
+                        print("Berhasil mengunduh data_resep_bersih.csv")
                 
-                # Download data
-                data_response = requests.get(data_url)
-                data = pd.read_csv(io.StringIO(data_response.text))
+                # Periksa kembali status file setelah download
+                tfidf_ok, matrix_ok, data_ok, _, _, _ = check_files()
                 
-                print(f"Berhasil mengunduh dan memuat {len(data)} resep")
-                
-                # Simpan file untuk penggunaan berikutnya
-                joblib.dump(tfidf, tfidf_path)
-                joblib.dump(tfidf_matrix, matrix_path)
-                data.to_csv(data_path, index=False)
+                if tfidf_ok and matrix_ok and data_ok:
+                    print("Semua file berhasil diunduh, memuat model...")
+                    tfidf = joblib.load(tfidf_path)
+                    tfidf_matrix = joblib.load(matrix_path)
+                    data = pd.read_csv(data_path)
+                    print(f"Berhasil memuat {len(data)} resep dari file yang diunduh")
+                else:
+                    raise Exception("Beberapa file masih tidak valid setelah download")
+                    
             except Exception as e:
-                print(f"Gagal mengunduh model: {e}")
+                print(f"Error saat mengunduh model: {e}")
                 raise
         else:
             print("URL model tidak ditemukan di environment variables")
-            raise FileNotFoundError("File model tidak valid dan URL tidak dikonfigurasi")
+            raise Exception("File model tidak valid dan URL tidak dikonfigurasi")
     
     # Normalisasi kolom kategori
     data['kategori_bahan'] = data['kategori_bahan'].str.strip().str.lower()
